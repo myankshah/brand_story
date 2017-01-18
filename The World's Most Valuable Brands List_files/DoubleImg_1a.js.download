@@ -1,0 +1,987 @@
+/**
+ * @fileoverview Provides common functionality for HTML5 layouts.
+ */
+
+
+/**
+ * Utils object with common functionality for the specific layout.
+ * @return {!Object.<function>} Globally available controller function.
+ */
+var layoutUtils = (function(angular) {
+  var module = angular.module('custom', []);
+
+
+   /**
+   * Selectors to set uniform font size.
+   * @enum {string}
+   */
+  var uniformSizeSelector = {
+    NAME: '.name',
+    PRICE: '.price'
+  };
+
+  /**
+   * Directions for the carousel moving.
+   * @enum {string}
+   */
+  var CarouselDirection = {
+    NEXT: 'next',
+    PREVIOUS: 'prev'
+  };
+
+  /**
+   * Maximum font sizes for the elements in pixels.
+   * @enum {number}
+   */
+  var MaxFontSize = {
+    HEADLINE: 60,
+    NAME: 18,
+    PRICE: 18
+  };
+
+
+  /**
+   * Function to request and apply data from DAB.
+   */
+  window.onAdData = function(data, util) {
+    var preloader = window.initPreloading(data);
+    preloader.addCompletionListener(function() {
+      utils.onAdData(data, util);
+    });
+    preloader.start();
+  };
+
+
+  /**
+   * Implementation for iterator through the carousel items.
+   * @type {{init: function, increment: function, decrement: function}}
+   * @constructor
+   */
+  var Iterator = {
+    init: function(length, current) {
+      this.length = length || 0;
+      this.current = current || 0;
+      this.wrapped = false;
+    },
+    increment: function() {
+      this.wrapped = false;
+      this.dir = 'right';
+      if (++this.current >= this.length) {
+        this.current = 0;
+        this.wrapped = true;
+      }
+      return this.current;
+    },
+    decrement: function() {
+      this.wrapped = false;
+      this.dir = 'left';
+      if (--this.current < 0) {
+        this.current = this.length - 1;
+        this.wrapped = true;
+      }
+      return this.current;
+    }
+  };
+
+
+  /**
+   * Builds classes that should be applied to the layout
+   * based on the parameters passed from DAB.
+   * @param {!Object} $scope AngularJS root layout $scope.
+   * @return {!Object.<string>} All available class.
+   */
+  function getClasses($scope) {
+    var layout = [];
+    var design = $scope.design;
+    var bg = [];
+    var btn = [design['btnStyle']];
+
+    layout.push(design['cornerStyle']);
+    if ($scope.toBoolean(design['bgGradient'])) {
+      layout.push('gradient');
+    }
+    if (utils.isLoadedRes(design['bgImageUrl'])) {
+      layout.push('image');
+    }
+    if ($scope.toBoolean(design['btnBevel'])) {
+      btn.push('bevel');
+    }
+    if ($scope.toBoolean(design['btnShad'])) {
+      btn.push('shadow');
+    }
+    return {
+      layout: layout.join(' '),
+      bg: bg.join(' '),
+      button: btn.join(' ')
+    };
+  }
+
+
+  /**
+   * Controller for using data binding in layout.
+   * @param {Object} $scope AngularJS layout $scope.
+   * @param {Object} dynamicData Dynamic data from DAB.
+   */
+  function LayoutController($scope, dynamicData) {
+    helpers.LayoutController($scope, dynamicData);
+
+    angular.forEach($scope.products, function(product, index) {
+      product.price = $scope.toBoolean($scope.headline['showPrice']) ?
+          product.price : '';
+      product.index = index;
+    });
+
+    setTimeout(uniformSize, 500, uniformSizeSelector.PRICE);
+    setTimeout(uniformSize, 500, uniformSizeSelector.NAME);
+
+    if ($scope.products.length > 1) {
+      var productsClone = $scope.products.slice();
+      $scope.products = $scope.products.concat(productsClone);
+    }
+
+    $scope.classes = getClasses($scope);
+
+    $scope.convertTooLightColorsToBlack = function(color) {
+      // Converts all colors that are under #EEEEEE to black (#000000) as text
+      // color is hardcoded as white (#FFFFFF) (EE)16 == (238)10
+      if (color == '') {
+        return null;
+      }
+
+      var hex = getFullHEXColor_(color.toColor());
+      var limit = 238;
+      // rgb is an array
+      var rgb = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      var r = parseInt(rgb[1].toUpperCase(), 16);
+      var g = parseInt(rgb[2].toUpperCase(), 16);
+      var b = parseInt(rgb[3].toUpperCase(), 16);
+
+      if (r > limit && g > limit && b > limit) {
+        hex = '#000';
+      }
+
+      return hex;
+    };
+
+
+    /**
+     * Builds lists of the products to be used in the carousels.
+     * @param {number} maxItems Maximum number of items in the list.
+     * @param {number} maxLists Maximum number of lists.
+     * @return {Array.<Object>} All the products lists available.
+     */
+    $scope.buildProductLists = function(maxItems, maxLists) {
+      var productList = [];
+      var products = $scope.products;
+      var chunk = maxItems || 4;
+      var max = maxLists || 10;
+
+      for (var i = 0, j = 0; i < products.length && j++ < max; i += chunk) {
+        var list = products.slice(i, i + chunk);
+        if (products.length > 1)
+          list = list.concat(products.slice(0, chunk - list.length));
+        productList.push(list);
+      }
+      return productList;
+    };
+  }
+
+
+  /**
+   * Convenience alias for querySelectorAll that returns results as Array
+   * (instead of querySelectorAll's native nodeList.)
+   * @param  {string} selector A CSS-style selector. ex: "#foo .bar>img"
+   * @param  {Element=} opt_element Root element to query (document is default).
+   * @return {Array<Element>}
+   */
+  function getElementsList(selector, opt_element) {
+    var parentElement = opt_element || document;
+    return Array.prototype.slice.call(parentElement.querySelectorAll(selector));
+  }
+
+
+  /**
+   * Makes the font sizes of the elements to be unified by the smallest font
+   * size.
+   * @param {string} classToUniform String with selector for elements to
+   *     uniform.
+   */
+  function uniformSize(classToUniform) {
+    var smallestFontSize = 1000;
+    // Find smallest font size.
+    angular.forEach(getElementsList(classToUniform + ' span'),
+        function(textFitElement) {
+          // Make sure that the element is visible.
+          if (textFitElement.offsetParent) {
+            var elementMinimumFontSize =
+                textFitElement.parentElement.getAttribute('minfontsize');
+            var elementFontSize = parseInt(
+                helpers.getStyleProperty(textFitElement, 'font-size'));
+            if (elementFontSize < elementMinimumFontSize) {
+              elementFontSize = elementMinimumFontSize;
+            }
+            if (elementFontSize < smallestFontSize) {
+              smallestFontSize = elementFontSize;
+            }
+          }
+        });
+
+    // Make uniform.
+    angular.forEach(getElementsList(classToUniform), function(el) {
+      var ngEl = angular.element(el);
+      var ngSpan = angular.element(ngEl[0].querySelector('span'));
+      ngEl.css('font-size', smallestFontSize + 'px');
+      ngSpan.css('font-size', smallestFontSize + 'px');
+    });
+  }
+
+
+  /**
+   * Exposes DynamicFlexFit as a custom attribute.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('flexFit', function($timeout) {
+    return {
+      restrict: 'A',
+      link: function($scope, el, attrs) {
+        setTimeout(function() {
+          flex($scope, el, $timeout);
+        }, 0);
+      }
+    };
+  });
+
+
+  /**
+   * Exposes DynamicAlignment as a custom attribute.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('align', function() {
+    return {
+      restrict: 'A',
+      link: function($scope, el, attrs) {
+        setTimeout(function() {
+          align(el);
+        }, 0);
+      }
+    };
+  });
+
+
+  /**
+   * Exposes imgWidth as a custom attribute.
+   *    Adjusts the width of the logo and its container
+   *    for square layout sizes taking in account aspect ratio of the logo.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('imgWidth', function() {
+    return {
+      restrict: 'A',
+      link: function($scope, $el, attrs) {
+        var done = false;
+        $scope.$watch('imgPlaced', function(val, oldVal) {
+          if (!done) {
+            if (val != oldVal && !$scope.isLogoWide &&
+                !$scope.isEmpty($scope.headline.txt)) {
+              setTimeout(function() {
+                if ($el.children().length > 0) {
+                  var width = $el.children(0)[0].width;
+                  $el.css({
+                    width: width + 'px'
+                  });
+                  $el.parent().css({
+                    width: 'initial'
+                  });
+                  $scope.logoReduced = width;
+                  $scope.$digest();
+                }
+              }, 0);
+            }
+          }
+          done = true;
+        });
+      }
+    };
+  });
+
+
+  /**
+   * Exposes availableWidth as a custom attribute.
+   *    Makes the textFit take all available width of its container.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('availableWidth', function() {
+    return {
+      restrict: 'A',
+      link: function($scope, $el, attrs) {
+        var done = false;
+        $scope.$watch('logoReduced', function(val, oldVal) {
+          if (!done) {
+            if (val != oldVal && !$scope.isLogoWide) {
+              setTimeout(function() {
+                $el.css({
+                  width: $el.parent()[0].offsetWidth - val - 25 -
+                      2 * $scope.design['logoPadding'] + 'px'
+                });
+                helpers.extTextFit($el);
+              }, 0);
+            }
+          }
+          done = true;
+        });
+      }
+    };
+  });
+
+
+  /**
+   * Exposes NamePrice as a custom attribute.
+   *    Implements looping between the price and the description
+   *    of the product.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('namePrice', function() {
+    return {
+      restrict: 'A',
+      link: function($scope, $el, attrs) {
+        setTimeout(function() {
+          var $price = angular.element($el.children()[0]);
+          var $name = angular.element($el.children()[1]);
+          var duration = 4000;
+          var isPriceShown = true;
+          var x;
+
+          var loop = function() {
+            if (isPriceShown) {
+              x = '-100%';
+              isPriceShown = false;
+            } else {
+              x = '0';
+              isPriceShown = true;
+            }
+            $el.css({
+              left: x
+            });
+          };
+
+          if (!$name.text().trim()) {
+            $el.css({
+              left: '0'
+            });
+          } else if (!$price.text().trim()) {
+            $el.css({
+              left: '-100%'
+            });
+          } else {
+            var timerId = setInterval(loop, duration);
+            loop();
+
+            setTimeout(function() {
+              clearInterval(timerId);
+              isPriceShown = false;
+              loop();
+            }, 29000);
+          }
+        }, 0);
+      }
+    };
+  });
+
+
+  /**
+   * Exposes "arrow" as a custom attribute.
+   * Draws navigation arrows for carousel.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('arrow', function() {
+    return {
+      restrict: 'A',
+      link: function($scope, $el, attrs) {
+        setTimeout(function() {
+          var canvas = document.createElement('canvas');
+          canvas.width = 15;
+          canvas.height = 21;
+          canvas.style.position = 'absolute';
+          var context = canvas.getContext('2d');
+          context.moveTo(0, 4);
+          context.lineTo(3, 4);
+          context.lineTo(3, 0);
+          context.lineTo(14, 10);
+          context.lineTo(3, 21);
+          context.lineTo(3, 21);
+          context.lineTo(3, 17);
+          context.lineTo(0, 17);
+          context.lineTo(0, 4);
+          context.fillStyle = $scope.design['btnColor'].toColor();
+          context.fill();
+
+          $el[0].appendChild(canvas);
+          canvas.style.left = '{0}px'.format(($el[0].offsetWidth -
+              canvas.width) / 2);
+          canvas.style.top = '{0}px'.format(($el[0].offsetHeight -
+              canvas.height) / 2);
+
+          $el.bind('mouseover', function() {
+            context.fillStyle = $scope.design['btnRollColor'].toColor();
+            context.fill();
+          });
+          $el.bind('mouseleave', function() {
+            context.fillStyle = $scope.design['btnColor'].toColor();
+            context.fill();
+          });
+          $el.bind('click', function(e) {
+            if ($el.hasClass('left'))
+              $scope.$emit('carousel_previous_item');
+            if ($el.hasClass('right'))
+              $scope.$emit('carousel_next_item');
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          });
+        }, 0);
+      }
+    };
+  });
+
+
+  /**
+   * Exposes "customCarousel" as a custom attribute. Calls initializes carousel.
+   * @return {!angular.directive} Directive definition object.
+   */
+  module.directive('customCarousel', function($timeout) {
+    return {
+      restrict: 'A',
+      link: function($scope, $el, attrs) {
+        setTimeout(function() {
+          customCarousel($scope, $el, $timeout);
+        }, 0);
+      }
+    };
+  });
+
+  angular.module('layout', ['utils', 'custom'],
+      function($controllerProvider) {
+    $controllerProvider.allowGlobals();
+  });
+
+
+  /**
+   * Custom Carousel implementation.
+   * @param {Object} scope AngularJS layout scope.
+   * @param {!angular.Element} elementObject Element that has these attributes.
+   * @param {Object} $timeout Timeout object for carousel.
+   */
+  function customCarousel(scope, elementObject, $timeout) {
+    var element = elementObject[0];
+    var timeoutId;
+    var iterator = Object.create(Iterator);
+    var itemWidth = getNumeralStyleProperty(element, 'width');
+    var itemHeight = getNumeralStyleProperty(element, 'height');
+    var listWBorderWidth = itemWidth + 2;
+    var listWBorderHeight = itemHeight + 10;
+    var $carousel = angular.element(element.querySelector('.carousel'));
+    var items = angular.element(element.querySelectorAll('.carousel-item'));
+    var time = element.attributes.timer.value;
+    var duration = element.attributes.duration.value;
+    var isVertical = element.attributes.vertical != void 0;
+    var isMoving = false;
+
+    var moveProperty = (isVertical) ? 'top' : 'left';
+
+    if (isVertical) {
+      itemWidth = getNumeralStyleProperty(element, 'height');
+      itemHeight = getNumeralStyleProperty(element, 'width');
+    }
+
+    var count = scope.$eval(element.attributes.total.value);
+    var maxProducts = scope.$eval(element.attributes.maxitems.value);
+    var singleMode = count > 1;
+
+    var active = 0;
+
+    var init = function() {
+      if (items.length > 1) {
+        angular.forEach(items, function(item, key) {
+          var $item = angular.element(item);
+          if (key < count - 1) {
+            $item.css(moveProperty, '+{0}px'.format(key * itemWidth));
+          } else {
+            $item.css(moveProperty, '-{0}px'.format(itemWidth));
+          }
+        });
+      }
+    };
+
+    var move = function(direction) {
+      var lastItem = false;
+      isMoving = true;
+      angular.forEach(items, function(item, key) {
+        var $item = angular.element(item);
+        setTimeout(function() {
+          var itemPosition = $item.css(moveProperty).replace('px', '');
+          var newPosition = itemPosition -
+              ((direction == CarouselDirection.NEXT) ?
+              itemWidth : itemWidth * - 1);
+
+          if (direction == CarouselDirection.NEXT &&
+              newPosition == itemWidth * - 2) {
+            newPosition = itemWidth * (count - 2);
+            lastItem = true;
+          }
+          if (direction == CarouselDirection.PREVIOUS &&
+              newPosition == itemWidth * (count - 1)) {
+            newPosition = -1 * itemWidth;
+            lastItem = true;
+          }
+
+          if (newPosition == 0) {
+            active = key * maxProducts;
+          }
+          if (lastItem) {
+            $item.css('display', 'none');
+          }
+          $item.css(moveProperty, '{0}px'.format(newPosition));
+          lastItem = false;
+        }, 70);
+        setTimeout(function() {
+          $item.css('display', 'inline-block');
+          isMoving = false;
+        }, 500);
+      });
+
+      scope.$emit('urlchange', scope.products[active].index);
+    };
+
+    var onNext = function() {
+      if (!isMoving) {
+        move(CarouselDirection.NEXT);
+      }
+    };
+
+    var onPrev = function() {
+      if (!isMoving) {
+        move('prev');
+      }
+    };
+
+    scope.$on('carousel_next_item', onNext);
+    scope.$on('carousel_previous_item', onPrev);
+    init();
+  }
+
+  /**
+   * Carousel implementation.
+   * @param {Object} $scope AngularJS layout scope.
+   * @param {!angular.Element} $el Element that has these attributes.
+   * @param {Object} $timeout Timeout object for carousel.
+   */
+  function carousel($scope, $el, $timeout) {
+    var el = $el[0];
+    var timeoutId;
+    var iterator = Object.create(Iterator);
+    var listWidth = getNumeralStyleProperty($el[0], 'width');
+    var listHeight = getNumeralStyleProperty($el[0], 'height');
+    var listWBorderWidth = listWidth + 2;
+    var listWBorderHeight = listHeight + 10;
+    var $carousel = angular.element(el.querySelector('.carousel'));
+    var time = el.attributes.timer.value;
+    var duration = el.attributes.duration.value;
+    var isVertical = el.attributes.vertical != void 0;
+
+
+    /**
+     * Sets active carousel element.
+     * @param {number} index Index of the active element.
+     */
+    var setActive = function(index) {
+      $scope.$emit('active:change', index);
+      if (iterator.wrapped) {
+        var i;
+        $carousel.removeClass('transition');
+        if (iterator.dir === 'left') {
+          i = iterator.length + 1;
+        } else if (iterator.dir === 'right') {
+          i = 0;
+        }
+        if (isVertical) {
+          $carousel.css('top', '-{0}px'.format(i * listWBorderHeight + 5));
+        } else {
+          $carousel.css('left', '-{0}px'.format(i * listWidth + 5));
+        }
+      }
+      $timeout(function() {
+        move(index);
+      }, iterator.wrapped ? 50 : 0);
+      iterator.current = index;
+
+      var prodClickOnly = $scope.toBoolean($scope.headline.productClickOnly);
+      /* If layout size is 320x100 change exit URL as carousel
+            rotates automatically.*/
+      if ($scope.frameHeight == 100 && prodClickOnly) {
+        $scope.$emit('urlchange', $scope.products[iterator.current].index);
+      }
+    };
+
+
+    /**
+     * Rotate carousel through the elements.
+     * @param {number} index Current carousel item.
+     */
+    var move = function(index) {
+      $carousel[0].setAttribute('class', 'carousel transition fast');
+      setTimeout(function() {
+        if (isVertical) {
+          $carousel.css('top',
+              '-{0}px'.format((index + 1) * listWBorderHeight + 5));
+        }
+        else $carousel.css('left',
+            '-{0}px'.format((index) * listWidth + listWidth + 5));
+      }, 50);
+    };
+
+
+    /**
+     * Timer initialization.
+     */
+    var initTimer = function() {
+      onTimeout();
+      if (duration) {
+        $timeout(function() {
+          onCancel();
+        }, duration);
+      }
+    };
+
+
+    /**
+     * Update index of the element.
+     * @param {number=} opt_index Index of current element.
+     */
+    var update = function(opt_index) {
+      var index = opt_index ? opt_index : iterator.increment();
+      setActive(index);
+    };
+
+
+    /**
+     * Function to be called in next arrow click.
+     */
+    var onNext = function() {
+      iterator.increment();
+      setActive(iterator.current);
+    };
+
+
+    /**
+     * Function to be called in previous arrow click.
+     */
+    var onPrev = function() {
+      iterator.decrement();
+      setActive(iterator.current);
+    };
+
+
+    /**
+     * Calls update function on timeout.
+     */
+    var onTimeout = function() {
+      timeoutId = $timeout(function() {
+        update();
+        onTimeout();
+      }, time);
+    };
+
+
+    /**
+     * Removes timeout.
+     */
+    var onCancel = function() {
+      $timeout.cancel(timeoutId);
+    };
+
+    var count = $scope.$eval(el.attributes.total.value);
+    var singleMode = count > 1;
+    iterator.init(count);
+
+    setTimeout(function() {
+      var $items = angular.element(el.querySelectorAll('.carousel-item'));
+      if (isVertical) {
+        $carousel.css({
+          height: '{0}px'.format((listWBorderHeight) * (count + 2)),
+          width: '{0}px'.format(listWidth)
+        });
+        $items.css('height', '{0}px'.format(listWBorderHeight));
+        $items.css('width', '{0}px'.format(listWidth));
+      } else {
+        $carousel.css('width', '{0}px'.format(listWBorderWidth * (count + 2)));
+        $items.css('width', '{0}px'.format(listWidth));
+      }
+      update(0);
+    }, 0);
+
+    if (singleMode) {
+      initTimer();
+      $scope.$on('carousel_next_item', onNext);
+      $scope.$on('carousel_previous_item', onPrev);
+      $el.parent().bind('mouseenter $destroy', onCancel);
+    } else {
+      $el.parent().addClass('single-mode');
+    }
+  }
+
+  /**
+   * Enlarges the elements if there is enough space in its parent.
+   * @param {Object} $scope AngularJS layout scope.
+   * @param {!angular.Element} $el Element that has these attributes.
+   * @param {Object=} opt_timeout Timeout object for carousel.
+   */
+  function flex($scope, $el, opt_timeout) {
+    var space = calculateAvailableSpace($el[0]);
+    var availableWidth = space.width;
+    var availableHeight = space.height;
+    var children = $el.children();
+    var partsCount = 0;
+    var flexCoef = 0;
+    var i, curr, $curr, outer, widthPart, heightPart;
+    for (i = 0; i < children.length; i++) {
+      curr = children[i];
+      if (curr.style.display != 'none') {
+        outer = calculateOuterIndent(curr);
+        flexCoef = getFlexNumber(angular.element(curr));
+        availableWidth -= curr.offsetWidth + outer.x;
+        availableHeight -= curr.offsetHeight + outer.y;
+        partsCount += flexCoef;
+      }
+    }
+    availableWidth = availableWidth < 0 ? 0 : availableWidth;
+    availableHeight = availableHeight < 0 ? 0 : availableHeight;
+    widthPart = availableWidth / partsCount;
+    heightPart = availableHeight / partsCount;
+    for (i = 0; i < children.length; i++) {
+      curr = children[i];
+      $curr = angular.element(curr);
+      if (curr.style.display != 'none') {
+        flexCoef = getFlexNumber($curr);
+        $curr.css({
+          width: '{0}px'.format(Math.floor(getNumeralStyleProperty(curr,
+              'width') + flexCoef * widthPart)),
+          height: '{0}px'.format(Math.floor(getNumeralStyleProperty(curr,
+              'height') + flexCoef * heightPart))
+        });
+
+        if (execPostponed($scope, $curr, opt_timeout)) {
+          flex($scope, $curr);
+        }
+      }
+    }
+  }
+
+
+  /**
+   * Exposes custom attribute and executes function that should
+   *    be called after all the directive worked.
+   * @param {Object} $scope AngularJS layout scope.
+   * @param {!angular.Element} $el Element that has these attributes.
+   * @param {Object} $timeout Timeout object for carousel.
+   * @return {boolean} Whether this function's already worked or not.
+   */
+  function execPostponed($scope, $el, $timeout) {
+    if ($el.attr('dynamic-align') !== void 0) {
+      align($el);
+    }
+    if ($el.attr('dynamic-carousel') !== void 0) {
+      carousel($scope, $el, $timeout);
+      return false;
+    }
+    return true;
+  }
+
+
+  /**
+   * Aligns element vertically.
+   * @param {!angular.Element} $el Element to align.
+   * @param {number=} opt_availableHeight Height available for alignment.
+   */
+  function align($el, opt_availableHeight) {
+    var $parent = $el.parent();
+    var height = opt_availableHeight ?
+        opt_availableHeight : $parent[0].offsetHeight - $el[0].offsetHeight;
+
+    height = height < 0 ? 0 : height;
+
+    switch ($el.attr('aligntype')) {
+      case 'top':
+        $el.css({
+          'position': 'relative',
+          'top': '0px'
+        });
+        break;
+      case 'bottom':
+        $el.css({
+          'position': 'relative',
+          'top': '{0}px'.format(height)
+        });
+        break;
+      default:
+        $el.css({
+          'position': 'relative',
+          'top': '{0}px'.format(Math.floor(height / 2))
+        });
+    }
+  }
+
+
+  /**
+   * Gets the value of the flex level.
+   * @param {!HTMLElement} el DOM element to calculate the space.
+   * @return {Number} Flex level value.
+   */
+  function getFlexNumber(el) {
+    var flexNum = el.attr('flex') || 0;
+    return parseInt(flexNum);
+  }
+
+
+  /**
+   * Calculates space taken by the element,
+   *    including margins.
+   * @param {!HTMLElement} el DOM element to calculate the space.
+   * @return {!Object.<number>} Width and height taken by the element.
+   */
+  function calculateAvailableSpace(el) {
+    var indent = calculateIndent(el);
+    return {
+      width: Math.floor(getNumeralStyleProperty(el, 'width') - indent.x),
+      height: Math.floor(getNumeralStyleProperty(el, 'height') - indent.y)
+    };
+  }
+
+
+  /**
+   * Calculates available free inner space for the element.
+   * @param {!HTMLElement} el DOM element to get the space.
+   * @return {!Object.<number>} Available space horizontally and vertically.
+   */
+  function calculateIndent(el) {
+    return {
+      x: getNumeralStyleProperty(el, 'paddingLeft') +
+          getNumeralStyleProperty(el, 'paddingRight') +
+          getNumeralStyleProperty(el, 'borderLeftWidth') +
+          getNumeralStyleProperty(el, 'borderRightWidth'),
+      y: getNumeralStyleProperty(el, 'paddingTop') +
+          getNumeralStyleProperty(el, 'paddingBottom') +
+          getNumeralStyleProperty(el, 'borderTopWidth') +
+          getNumeralStyleProperty(el, 'borderBottomWidth')
+    };
+  }
+
+
+  /**
+   * Calculates available free outer space for the element.
+   * @param {!HTMLElement} el DOM element to get the space.
+   * @return {!Object.<number>} Available space horizontally and vertically.
+   */
+  function calculateOuterIndent(el) {
+    return {
+      x: getNumeralStyleProperty(el, 'marginLeft') +
+          getNumeralStyleProperty(el, 'marginRight'),
+      y: getNumeralStyleProperty(el, 'marginTop') +
+          getNumeralStyleProperty(el, 'marginBottom')
+    };
+  }
+
+
+  /**
+   * Gets the value of the CSS style.
+   * @param {!HTMLElement} el DOM element to get the value from.
+   * @param {!string} name Property title.
+   * @return {Number} Value of the corresponding CSS property.
+   */
+  function getNumeralStyleProperty(el, name) {
+    var style = window.getComputedStyle(el, null);
+    return (parseFloat(style[name]));
+  }
+
+
+  /**
+   * Expands shorthand form (e.g. "03F") to full form (e.g. "0033FF").
+   * @param {!string} hex HEX color to expand.
+   * @return {string} Full HEX representation of the color.
+   * @private
+   */
+  function getFullHEXColor_(hex) {
+    var shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    return hex.replace(shorthandRegex, function(r, g, b) {
+      return r + r + g + g + b + b;
+    });
+  }
+
+  return {
+    LayoutController: LayoutController
+  };
+})(angular);
+
+
+(function() {
+  utils.defineMeta('version', '3.0');
+
+  utils.defineAttribute('Headline', 'cta', false);
+  utils.defineAttribute('Headline', 'txt', false);
+  utils.defineAttribute('Headline', 'productClickOnly', false);
+  utils.defineAttribute('Headline', 'showPrice', false);
+  utils.defineAttribute('Product', 'name', false);
+  utils.defineAttribute('Product', 'price', false);
+  utils.defineAttribute('Product', 'imageUrl', false);
+  utils.defineAttribute('Product', 'url', false);
+  utils.defineAttribute('Design', 'logoImageUrl', false);
+  utils.defineAttribute('Design', 'logoPadding', false);
+  utils.defineAttribute('Design', 'bgImageUrl', false);
+  utils.defineAttribute('Design', 'bgAlpha', false);
+  utils.defineAttribute('Design', 'bgColor', false);
+  utils.defineAttribute('Design', 'bgColorAlt', false);
+  utils.defineAttribute('Design', 'bgGradient', false);
+  utils.defineAttribute('Design', 'borderColor', false);
+  utils.defineAttribute('Design', 'cornerStyle', false);
+  utils.defineAttribute('Design', 'btnStyle', false);
+  utils.defineAttribute('Design', 'btnBevel', false);
+  utils.defineAttribute('Design', 'btnShad', false);
+  utils.defineAttribute('Design', 'btnColor', false);
+  utils.defineAttribute('Design', 'btnRollColor', false);
+  utils.defineAttribute('Design', 'txtColorCta', false);
+  utils.defineAttribute('Design', 'glowColor', false);
+  utils.defineAttribute('Design', 'txtColorTitle', false);
+  utils.defineAttribute('Design', 'txtColorPrice', false);
+  utils.defineAttribute('Design', 'txtColorProduct', false);
+  utils.defineAttribute('Design', 'headlineSize', false);
+  utils.defineAttribute('Design', 'nameSize', false);
+  utils.defineAttribute('Design', 'priceSize', false);
+  utils.defineAttribute('Design', 'fontUrl', false);
+
+  utils.defineOccurrences('Headline', 1, 1);
+  utils.defineOccurrences('Design', 1, 1);
+  utils.defineOccurrences('Product', 4, 4);
+
+  window.setup = function() {
+    document.getElementById('ad-container').addEventListener('click',
+        utils.clickHandler, false);
+  };
+
+  window.initPreloading = function(dynamicData) {
+    var data = dynamicData.google_template_data.adData[0];
+    var design = utils.parse(data, 'Design')[0];
+    var products = utils.parse(data, 'Product');
+    var preloader = utils.preloader;
+    preloader.addImage(design.logoImageUrl);
+
+    if (design.bgImageUrl && design.bgImageUrl.toLowerCase() !== 'none' &&
+        design.bgImageUrl !== '' &&
+        design.bgImageUrl.toLowerCase() !== 'blank') {
+      preloader.addImage(design.bgImageUrl);
+    }
+
+    for (var i = 0; i < products.length; i++) {
+      preloader.addImage(products[i].imageUrl);
+    }
+
+    return preloader;
+  };
+})();

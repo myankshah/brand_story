@@ -1,0 +1,112 @@
+[ng\:cloak],
+[ng-cloak],
+.ng-cloak {
+  display: none !important;
+}
+
+/* Fix for IE to prevent border for images within anchor */
+img {
+  border: 0;
+}
+
+.headline,
+.cta-text-shadow {
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.carousel-wrapper {
+  overflow: hidden;
+}
+
+.arrow {
+  display: block;
+  height: 40px;
+  position: absolute;
+  width: 20px;
+  z-index: 10;
+}
+
+.arrow.left {
+  -moz-transform: matrix(-1, 0, 0, 1, 0, 0);
+  -webkit-transform: matrix(-1, 0, 0, 1, 0, 0);
+  transform: matrix(-1, 0, 0, 1, 0, 0);
+}
+
+.background-gradient {
+  background: url(DoubleImg_1a_bg.png) no-repeat;
+  background-size: 100% 100%;
+  left: 0;
+  position: absolute;
+  top: 0;
+  z-index: -1;
+}
+
+.bevel {
+  -moz-box-shadow: -2px -2px 10px rgba(0, 0, 0, .5) inset, 2px 2px 10px #fff inset;
+  -webkit-box-shadow: -2px -2px 10px rgba(0, 0, 0, .5) inset, 2px 2px 10px #fff inset;
+  box-shadow: -2px -2px 10px rgba(0, 0, 0, .5) inset, 2px 2px 10px #fff inset;
+}
+
+.shadow {
+  -moz-box-shadow: 0 2px 2px #333;
+  -webkit-box-shadow: 0 2px 2px #333;
+  box-shadow: 0 2px 2px #333;
+}
+
+.shadow.bevel {
+  -moz-box-shadow: -2px -2px 10px rgba(0, 0, 0, .5) inset, 2px 2px 10px #fff inset, 0 2px 2px #333;
+  -webkit-box-shadow: -2px -2px 10px rgba(0, 0, 0, .5) inset, 2px 2px 10px #fff inset, 0 2px 2px #333;
+  box-shadow: -2px -2px 10px rgba(0, 0, 0, .5) inset, 2px 2px 10px #fff inset, 0 2px 2px #333;
+}
+
+.round .product-content {
+  -webkit-border-radius: 8px;
+  border-radius: 8px;
+}
+
+.square .product-content {
+  -webkit-border-radius: 0;
+  border-radius: 0;
+}
+
+.transition {
+  -webkit-transition: bottom 0.5s linear, left 0.5s linear, right 0.5s linear, top 0.5s linear;
+  -moz-transition: bottom 0.5s linear, left 0.5s linear, right 0.5s linear, top 0.5s linear;
+  transition: bottom 0.5s linear, left 0.5s linear, right 0.5s linear, top 0.5s linear;
+}
+
+.transition.fast {
+  -webkit-transition: bottom 0.4s ease, left 0.4s ease, right 0.4s ease, top 0.4s ease;
+  -moz-transition: bottom 0.4s ease, left 0.4s ease, right 0.4s ease, top 0.4s ease;
+  transition: bottom 0.4s ease, left 0.4s ease, right 0.4s ease, top 0.4s ease;
+}
+
+.logo {
+  height: 100% !important;
+  position: relative;
+  width: 100% !important;
+}
+
+.logo img {
+  display: block;
+}
+
+.productDetails {
+  padding: 0 2px;
+}
+
+.button.text.shadow {
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.75);
+}
+
+.layout .button.text,
+.footer .button.text {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.layout .button span,
+.footer .button span {
+  display: block;
+}
